@@ -150,8 +150,30 @@ def initialize_weights(in_dim, out_dim, scheme='he'):
     b = np.full((out_dim,), 1e-6)
     return W,b
 
-# Step 6 - make_loss (not yet solved)
-# TODO: implement
+# Step 6 - make_loss
+def make_loss(kind='cross_entropy'):
+    """Return a classification loss_fn(logits, labels) -> (loss, d_logits).
+
+    Inputs to loss_fn:
+      logits: (batch, C) float array of raw class scores
+      labels: (batch,) int array of class indices in [0, C)
+    Outputs:
+      loss: Python float, mean scalar loss over the batch (finite)
+      d_logits: (batch, C) gradient of loss w.r.t. logits (finite)
+    Must pass gradient_check, be minimized by confident correct predictions,
+    and stay finite under saturated logits.
+    """
+    # TODO: your approach here
+    def loss_fn(logits, labels):
+      N,C = logits.shape
+      shifted = logits - np.max(logits, axis=1, keepdims=True)
+      exp_z = np.exp(shifted)
+      p = exp_z/np.sum(exp_z,axis=1, keepdims=True)
+      loss = np.mean(-np.log(p[np.arange(N), labels]))
+      y_onehot = np.eye(C)[labels]
+      d_logits = (p - y_onehot)/N
+      return loss,d_logits
+    return loss_fn
 
 # Step 7 - make_sequential (not yet solved)
 # TODO: implement
