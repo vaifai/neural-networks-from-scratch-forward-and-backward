@@ -328,8 +328,91 @@ def train(model, loss_fn, optimizer, x, y, epochs, batch_size, seed=0):
       history.append(total_loss/batches)
     return history
 
-# Step 12 - design_network (not yet solved)
-# TODO: implement
+# Step 12 - design_network
+def design_network(input_dim, num_classes, seed=0):
+    """Design and train a net that solves a nonlinear classification task.
+
+    Inputs:
+      input_dim: int, feature dimension
+      num_classes: int, number of classes
+      seed: int, RNG seed for reproducibility
+
+    Returns:
+      model: trained sequential model (forward/backward/params)
+      metrics: dict with
+        'accuracy': float >= 0.90 on an evaluation set,
+        'x': np.ndarray (N, input_dim) eval features (N >= 50),
+        'y': np.ndarray (N,) integer eval labels.
+      The eval set (x, y) must not be linearly separable to high accuracy
+      (< 0.82 for a linear classifier), and the model's true accuracy on
+      it must match metrics['accuracy'] and be >= 0.90.
+    """
+    # TODO: your approach here
+    x, y = generate_data(input_dim, num_classes, seed)
+    np.random.seed(seed)
+
+    def init_fn(i, o):
+      return initialize_weights(i, o, scheme="he")
+    
+    layers = [
+      make_dense(input_dim, 64, init_fn),
+      make_activation("relu"),
+      make_dense(64, 64, init_fn),
+      make_activation("relu"),
+      make_dense(64, num_classes, init_fn)
+    ]
+
+    model = make_sequential(layers)
+
+    loss_fn = make_loss("cross_entropy")
+
+    optimizer = make_optimizer(
+      model["params"],
+      lr=0.05,
+      kind="sgd"
+    )
+
+    train(model,loss_fn,optimizer,x,y,epochs=300,batch_size=32,seed=seed)
+
+    logits, _ = model["forward"](x)
+    predictions = np.argmax(logits, axis=1)
+    accuracy = float(np.mean(predictions == y))
+
+    metrics = {
+      "accuracy": accuracy,
+      "x": x,
+      "y": y
+    }
+
+    return model, metrics
+
+    
+def generate_data(input_dim, num_classes, seed):
+  rng = np.random.default_rng(seed)
+  samples_per_class = 100
+
+  xs = []
+  ys = []
+
+  for c in range(num_classes):
+    for region in range(2):
+      center = 2 * (region * num_classes + c)
+      x_part = rng.normal(
+        loc=0.0,
+        scale=0.08,
+        size=(samples_per_class // 2, input_dim)
+        )
+      x_part[:, 0] += center
+      xs.append(x_part)
+      ys.append(
+        np.full(samples_per_class // 2, c, dtype=np.int64)
+        )
+  x = np.vstack(xs)
+  y = np.concatenate(ys)
+
+  x[:, 0] = (x[:, 0] - x[:, 0].mean()) / x[:, 0].std()
+  perm = rng.permutation(len(x))
+  return x[perm], y[perm]
 
 # Step 13 - improve_generalization (not yet solved)
 # TODO: implement
