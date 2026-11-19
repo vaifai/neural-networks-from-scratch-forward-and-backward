@@ -414,6 +414,145 @@ def generate_data(input_dim, num_classes, seed):
   perm = rng.permutation(len(x))
   return x[perm], y[perm]
 
-# Step 13 - improve_generalization (not yet solved)
-# TODO: implement
+# Step 13 - improve_generalization
+def improve_generalization(baseline_model_fn, x_train, y_train, x_val, y_val, seed=0):
+    """Improve held-out accuracy over an unregularized baseline.
+
+    Inputs:
+      baseline_model_fn: zero-arg callable -> fresh untrained sequential model
+        (dict with 'forward', 'backward', 'params') matching the data dims.
+      x_train, y_train: training features (N, D) and int labels (N,).
+      x_val, y_val: validation features (N_val, D) and int labels (N_val,).
+      seed: int for deterministic training.
+
+    Returns:
+      dict with keys:
+        'val_accuracy': float accuracy of the improved model on x_val/y_val
+        'baseline_val_accuracy': float val accuracy of plain unregularized SGD
+        'predictions': np.ndarray shape (N_val,) int preds from improved model
+        'model': the trained improved model
+
+    Required behavior:
+      val_accuracy > baseline_val_accuracy
+      predictions == argmax(model.forward(x_val), axis=1)
+      val_accuracy == mean(predictions == y_val)
+      predictions are non-constant (not a trivial single-class predictor)
+    """
+    # TODO: your approach here
+
+    def create_optimizer(params, lr=0.05, weight_decay=0.0):
+      def update(param, grad, key=None):
+        if isinstance(param, np.ndarray):
+          if key == "W":
+            param -= lr * (grad + weight_decay * param)
+          else:
+            param-=lr*grad
+        elif isinstance(param, dict):
+          for k in param:
+            update(param[k],grad[k],k)
+        elif isinstance(param, (list, tuple)):
+          for p,g in zip(param, grad):
+            update(p,g)
+      
+      def step(grads):
+        update(params, grads)
+      
+      return {"step": step}
+
+    
+    def evaluate(model):
+      logits, _ = model["forward"](x_val)
+      predictions = np.argmax(logits, axis=1)
+      accuracy = float(np.mean(predictions == y_val))
+      return accuracy, predictions
+
+    def save_params(params):
+      if isinstance(params, np.ndarray):
+        return params.copy()
+      
+      if isinstance(params, dict):
+        return {
+          k:save_params(v) for k,v in params.items()
+        }
+      if isinstance(params, (list, tuple)):
+        return [save_params(p) for p in params]
+      
+      raise TypeError("Unsupported parameter type")
+
+    def restore_params(params, saved):
+      if isinstance(params, np.ndarray):
+        params[...] = saved
+      elif isinstance(params, dict):
+        for k in params:
+          restore_params(params[k], saved[k])
+      elif isinstance(params, (list, tuple)):
+        for p,s in zip(params,saved):
+          restore_params(p,s)
+      else:
+        raise TypeError("Unsupported parameter type")
+
+    np.random.seed(seed)
+    baseline = baseline_model_fn()
+
+    improved = baseline_model_fn()
+    initial_params = save_params(baseline["params"])
+    restore_params(improved["params"], initial_params)
+
+    loss_fn = make_loss()
+    lr = 0.05
+    max_epochs = 70
+    batch_size = 32
+
+    baseline_optimiser = make_optimizer(baseline["params"], lr=lr, kind = "sgd")
+    improved_optimiser = create_optimizer(improved["params"], lr=lr, weight_decay=0.05)
+
+    train(
+      baseline,
+      loss_fn,
+      baseline_optimiser,
+      x_train,
+      y_train,
+      epochs=70,
+      batch_size=batch_size,
+      seed=seed
+    )
+
+    baseline_accuracy, _ = evaluate(baseline)
+
+    best_accuracy, _ = evaluate(improved)
+    best_params = save_params(improved["params"])
+
+    best_epoch = 0
+    patience = 40
+
+    for epoch in range(150):
+      train(
+        improved,
+        loss_fn,
+        improved_optimiser,
+        x_train,
+        y_train,
+        epochs=1,
+        batch_size=batch_size,
+        seed=seed + epoch
+      )
+
+      val_accuracy, _ = evaluate(improved)
+      if val_accuracy > best_accuracy:
+        best_accuracy = val_accuracy
+        best_params = save_params(improved["params"])
+        best_epoch = epoch + 1
+
+      if (epoch + 1) - best_epoch >= patience:
+        break
+
+    restore_params(improved["params"], best_params)
+    val_accuracy, predictions = evaluate(improved)
+
+    return {
+      "val_accuracy": val_accuracy,
+      "baseline_val_accuracy": baseline_accuracy,
+      "predictions": predictions,
+      "model": improved
+    }
 
